@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Custom Snort Rules — SecuRift Detection Engineering{% endblock %}
+{% block page_title %}Custom Snort Detection Signatures{% endblock %}
+
+{% block content %}
+<!-- Control Card -->
+<div class="soc-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h3 class="soc-card-title">Network Signature Registry</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                Design, validate, and manage Snort detection rules for defensive architecture evaluation.
+            </p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('rules.create') }}" class="btn-soc btn-soc-cyan">+ Add New Snort Rule</a>
+            <a href="{{ url_for('rules.export_rules_file') }}" class="btn-soc btn-soc-primary">⬇ Export .rules File</a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <form method="GET" action="{{ url_for('rules.index') }}" style="display: flex; gap: 1rem; margin-top: 1.25rem; flex-wrap: wrap; align-items: flex-end;">
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 140px;">
+            <label class="soc-label">Protocol</label>
+            <select name="protocol" class="soc-select" onchange="this.form.submit()">
+                <option value="">All Protocols</option>
+                <option value="tcp" {% if request.args.get('protocol') == 'tcp' %}selected{% endif %}>TCP</option>
+                <option value="udp" {% if request.args.get('protocol') == 'udp' %}selected{% endif %}>UDP</option>
+                <option value="icmp" {% if request.args.get('protocol') == 'icmp' %}selected{% endif %}>ICMP</option>
+                <option value="ip" {% if request.args.get('protocol') == 'ip' %}selected{% endif %}>IP</option>
+            </select>
+        </div>
+
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 140px;">
+            <label class="soc-label">Severity</label>
+            <select name="severity" class="soc-select" onchange="this.form.submit()">
+                <option value="">All Severities</option>
+                <option value="Critical" {% if request.args.get('severity') == 'Critical' %}selected{% endif %}>Critical</option>
+                <option value="High" {% if request.args.get('severity') == 'High' %}selected{% endif %}>High</option>
+                <option value="Medium" {% if request.args.get('severity') == 'Medium' %}selected{% endif %}>Medium</option>
+                <option value="Low" {% if request.args.get('severity') == 'Low' %}selected{% endif %}>Low</option>
+            </select>
+        </div>
+
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 140px;">
+            <label class="soc-label">Status</label>
+            <select name="status" class="soc-select" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                <option value="enabled" {% if request.args.get('status') == 'enabled' %}selected{% endif %}>Enabled Only</option>
+                <option value="disabled" {% if request.args.get('status') == 'disabled' %}selected{% endif %}>Disabled Only</option>
+            </select>
+        </div>
+
+        <div class="soc-form-group" style="margin-bottom: 0; flex-grow: 1;">
+            <label class="soc-label">Search</label>
+            <input type="text" name="q" class="soc-input" placeholder="Search by SID, message, or rule text..." value="{{ request.args.get('q', '') }}">
+        </div>
+
+        <button type="submit" class="btn-soc">Filter</button>
+        {% if request.args %}
+        <a href="{{ url_for('rules.index') }}" class="btn-soc btn-soc-sm" style="color: var(--text-dim);">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Rules Table -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Registered Detection Signatures ({{ rules|length }})</h3>
+    </div>
+
+    {% if rules and rules|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>SID</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                    <th>Protocol</th>
+                    <th>Header (Src &rarr; Dst)</th>
+                    <th>Rule Message</th>
+                    <th>Severity</th>
+                    <th>MITRE</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rules %}
+                <tr style="{{ 'opacity: 0.6;' if not r.enabled else '' }}">
+                    <td><code>{{ r.sid }}</code></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('rules.toggle', rule_id=r.id) }}" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-soc btn-soc-sm {{ 'btn-soc-success' if r.enabled else 'btn-soc-danger' }}" style="padding: 2px 6px; font-size: 0.68rem;">
+                                {{ 'Enabled' if r.enabled else 'Disabled' }}
+                            </button>
+                        </form>
+                    </td>
+                    <td><span class="badge-soc cyan">{{ r.action }}</span></td>
+                    <td><span class="badge-soc low">{{ r.protocol|upper }}</span></td>
+                    <td style="font-size: 0.75rem;">
+                        <code>{{ r.source_ip }}:{{ r.source_port }} {{ r.direction }} {{ r.destination_ip }}:{{ r.destination_port }}</code>
+                    </td>
+                    <td>
+                        <strong>{{ r.message }}</strong>
+                        <div style="font-size: 0.72rem; color: var(--text-dim);">Rev: {{ r.revision }} | {{ r.classification }}</div>
+                    </td>
+                    <td><span class="badge-soc {{ r.severity | lower }}">{{ r.severity }}</span></td>
+                    <td>
+                        {% if r.mitre_technique %}
+                        <a href="{{ url_for('mitre.index') }}" style="color: var(--purple-accent); text-decoration: none; font-size: 0.78rem;">
+                            {{ r.mitre_technique }}
+                        </a>
+                        {% else %}
+                        <span style="color: var(--text-dim);">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="white-space: nowrap;">
+                        <a href="{{ url_for('rules.detail', rule_id=r.id) }}" class="btn-soc btn-soc-sm" title="View Detection Logic">Logic</a>
+                        <a href="{{ url_for('rules.edit', rule_id=r.id) }}" class="btn-soc btn-soc-sm">Edit</a>
+                        <form method="POST" action="{{ url_for('rules.delete', rule_id=r.id) }}" style="display: inline;" onsubmit="return confirm('Delete Rule SID {{ r.sid }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-soc btn-soc-sm btn-soc-danger">×</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">🛡️</div>
+        <div class="empty-state-text">No Snort detection rules found matching your filters.</div>
+        <a href="{{ url_for('rules.create') }}" class="btn-soc btn-soc-cyan btn-soc-sm">Add First Detection Rule</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

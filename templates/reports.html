@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}SOC Reports & Audits — SecuRift{% endblock %}
+{% block page_title %}SOC Reporting & Defensive Architecture Audits{% endblock %}
+
+{% block content %}
+<!-- Reports Generator Grid -->
+<div class="grid-3">
+    <!-- Report 1: Custom Snort Rules -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Report 1: Rules Spec</h3>
+            <span class="badge-soc cyan">Signatures</span>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); min-height: 50px;">
+            Complete technical specification of custom Snort rules including header endpoints, syntax, severity, purpose, and MITRE techniques.
+        </p>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <a href="{{ url_for('reports.generate_rules_pdf_route') }}" class="btn-soc btn-soc-primary btn-soc-sm">
+                📄 PDF Report
+            </a>
+            <a href="{{ url_for('rules.export_rules_file') }}" class="btn-soc btn-soc-sm">
+                ⬇ CSV Export
+            </a>
+        </div>
+    </div>
+
+    <!-- Report 2: Detection Coverage Matrix -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Report 2: Coverage Matrix</h3>
+            <span class="badge-soc purple">Validation</span>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); min-height: 50px;">
+            Comprehensive audit matrix correlating expected detection vs actual observation, validation status, and confusion matrix parameters.
+        </p>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <a href="{{ url_for('reports.generate_coverage_pdf_route') }}" class="btn-soc btn-soc-primary btn-soc-sm">
+                📄 PDF Report
+            </a>
+            <a href="{{ url_for('coverage.export_csv') }}" class="btn-soc btn-soc-sm">
+                ⬇ CSV Export
+            </a>
+        </div>
+    </div>
+
+    <!-- Report 3: Performance Benchmark -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Report 3: Performance</h3>
+            <span class="badge-soc pass">Benchmarking</span>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); min-height: 50px;">
+            Throughput benchmarks, packets processed, processing time in seconds, alerts generated, and alerts per 1,000 packets density.
+        </p>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <a href="{{ url_for('reports.generate_performance_pdf_route') }}" class="btn-soc btn-soc-primary btn-soc-sm">
+                📄 PDF Report
+            </a>
+            <a href="{{ url_for('reports.export_performance_csv_route') }}" class="btn-soc btn-soc-sm">
+                ⬇ CSV Export
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Report Generation History Table -->
+<div class="soc-card" style="margin-top: 1.5rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Generated Report Archives ({{ reports|length }} Files)</h3>
+        <span class="badge-soc low">Audit Trail</span>
+    </div>
+
+    {% if reports and reports|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Report ID</th>
+                    <th>Report Type</th>
+                    <th>Format</th>
+                    <th>Filename</th>
+                    <th>Generated Date</th>
+                    <th>Download</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reports %}
+                <tr>
+                    <td>#{{ r.id }}</td>
+                    <td><strong>{{ r.report_type }}</strong></td>
+                    <td>
+                        <span class="badge-soc {{ 'cyan' if r.file_format == 'PDF' else 'low' }}">
+                            {{ r.file_format }}
+                        </span>
+                    </td>
+                    <td><code>{{ r.filename }}</code></td>
+                    <td style="color: var(--text-dim); font-size: 0.78rem;">
+                        {{ r.generated_at.strftime('%Y-%m-%d %H:%M:%S') if r.generated_at else '' }}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('reports.download_report', report_id=r.id) }}" class="btn-soc btn-soc-sm btn-soc-cyan">
+                            ⬇ Download
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📁</div>
+        <div class="empty-state-text">No reports have been generated yet. Click any PDF or CSV button above to create an audit report.</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

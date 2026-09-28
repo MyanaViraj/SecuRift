@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}SOC Dashboard — SecuRift Network Defence{% endblock %}
+{% block page_title %}Security Operations Dashboard{% endblock %}
+
+{% block content %}
+<!-- Top Metrics Grid -->
+<div class="stat-grid">
+    <div class="stat-card cyan">
+        <span class="stat-label">Total Snort Rules</span>
+        <span class="stat-value">{{ stats.total_rules }}</span>
+        <span class="stat-sub">{{ stats.active_rules }} Active Signatures</span>
+    </div>
+    <div class="stat-card blue">
+        <span class="stat-label">Packets Analyzed</span>
+        <span class="stat-value">{{ stats.total_packets_analyzed | number_format }}</span>
+        <span class="stat-sub">{{ stats.pcap_count }} PCAP Captures</span>
+    </div>
+    <div class="stat-card warning">
+        <span class="stat-label">Total Alerts</span>
+        <span class="stat-value">{{ stats.total_alerts }}</span>
+        <span class="stat-sub">{{ stats.reviewed_alerts }} Reviewed | {{ stats.unknown_alerts }} Unknown</span>
+    </div>
+    <div class="stat-card success">
+        <span class="stat-label">True Positives</span>
+        <span class="stat-value">{{ stats.true_positives }}</span>
+        <span class="stat-sub">From Evaluated Cohort</span>
+    </div>
+    <div class="stat-card danger">
+        <span class="stat-label">False Positives</span>
+        <span class="stat-value">{{ stats.false_positives }}</span>
+        <span class="stat-sub">From Evaluated Cohort</span>
+    </div>
+    <div class="stat-card purple">
+        <span class="stat-label">Detection Rate (Recall)</span>
+        <span class="stat-value">{% if stats.detection_rate != 'N/A' %}{{ stats.detection_rate }}%{% else %}N/A{% endif %}</span>
+        <span class="stat-sub">Cohort Size: {{ stats.evaluation_sample_size }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">False Positive Rate</span>
+        <span class="stat-value">{% if stats.false_positive_rate != 'N/A' %}{{ stats.false_positive_rate }}%{% else %}N/A{% endif %}</span>
+        <span class="stat-sub">FP / (FP + TN)</span>
+    </div>
+    <div class="stat-card cyan">
+        <span class="stat-label">MITRE Techniques</span>
+        <span class="stat-value">{{ stats.mitre_covered }}</span>
+        <span class="stat-sub">Mapped in Matrix</span>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="grid-3" style="margin-top: 1rem;">
+    <!-- Severity Chart -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Alerts by Severity</h3>
+            <span class="badge-soc low">Distribution</span>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="severityChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Accuracy / Confusion Chart -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Detection Classification</h3>
+            <span class="badge-soc pass">Confusion Metrics</span>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="accuracyChart"></canvas>
+        </div>
+    </div>
+
+    <!-- TP vs FP Ratio -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">True vs False Positives</h3>
+            <span class="badge-soc cyan">Signal vs Noise</span>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="tpFpChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="grid-2" style="margin-top: 1rem;">
+    <!-- Performance Chart -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Rule Efficiency (Alerts / 1k Packets)</h3>
+            <span class="badge-soc medium">Benchmarking</span>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="performanceChart"></canvas>
+        </div>
+    </div>
+
+    <!-- MITRE Coverage Breakdown -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">MITRE ATT&CK Technique Distribution</h3>
+            <span class="badge-soc purple">Matrix Mapping</span>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="mitreChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity Section -->
+<div class="soc-card" style="margin-top: 1rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Recent Test & Validation Activity</h3>
+        <a href="{{ url_for('validation.index') }}" class="btn-soc btn-soc-sm">View Full Validation Log</a>
+    </div>
+
+    {% if recent_activity and recent_activity|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Test / Activity Name</th>
+                    <th>Rule SID</th>
+                    <th>Expected</th>
+                    <th>Actual</th>
+                    <th>Result Status</th>
+                    <th>Severity</th>
+                    <th>Date / Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in recent_activity %}
+                <tr>
+                    <td><strong>{{ item.test_name }}</strong></td>
+                    <td><code>{{ item.sid }}</code></td>
+                    <td>{{ item.expected }}</td>
+                    <td>{{ item.actual }}</td>
+                    <td>
+                        <span class="badge-soc {{ 'pass' if item.status == 'PASS' else ('fail' if item.status in ['FAIL', 'NOT DETECTED'] else 'pending') }}">
+                            {{ item.status }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge-soc {{ item.severity | lower }}">{{ item.severity }}</span>
+                    </td>
+                    <td style="color: var(--text-muted); font-size: 0.78rem;">{{ item.timestamp }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">🛡️</div>
+        <div class="empty-state-text">No detection validation records found in SQLite database.</div>
+        <a href="{{ url_for('test_cases.index') }}" class="btn-soc btn-soc-cyan btn-soc-sm">Create First Test Case</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // 1. Severity Chart
+    const sevCtx = document.getElementById("severityChart")?.getContext("2d");
+    if (sevCtx) {
+        new Chart(sevCtx, {
+            type: "doughnut",
+            data: {
+                labels: ["Critical", "High", "Medium", "Low"],
+                datasets: [{
+                    data: [
+                        {{ chart_data.severity.Critical | default(0) }},
+                        {{ chart_data.severity.High | default(0) }},
+                        {{ chart_data.severity.Medium | default(0) }},
+                        {{ chart_data.severity.Low | default(0) }}
+                    ],
+                    backgroundColor: ["#ef4444", "#f97316", "#f59e0b", "#3b82f6"],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { color: "#94a3b8", font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    // 2. Detection Classification Chart (Confusion Matrix)
+    const accCtx = document.getElementById("accuracyChart")?.getContext("2d");
+    if (accCtx) {
+        new Chart(accCtx, {
+            type: "bar",
+            data: {
+                labels: ["True Pos", "False Pos", "False Neg", "True Neg"],
+                datasets: [{
+                    label: "Count",
+                    data: [
+                        {{ stats.true_positives }},
+                        {{ stats.false_positives }},
+                        {{ stats.false_negatives }},
+                        {{ stats.true_negatives }}
+                    ],
+                    backgroundColor: ["#10b981", "#ef4444", "#f59e0b", "#06b6d4"],
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: "#94a3b8" }, grid: { display: false } },
+                    y: { ticks: { color: "#94a3b8", precision: 0 }, grid: { color: "rgba(255,255,255,0.05)" } }
+                }
+            }
+        });
+    }
+
+    // 3. TP vs FP Ratio
+    const tpFpCtx = document.getElementById("tpFpChart")?.getContext("2d");
+    if (tpFpCtx) {
+        new Chart(tpFpCtx, {
+            type: "pie",
+            data: {
+                labels: ["True Positives", "False Positives"],
+                datasets: [{
+                    data: [{{ stats.true_positives }}, {{ stats.false_positives }}],
+                    backgroundColor: ["#10b981", "#ef4444"],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom", labels: { color: "#94a3b8", font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    // 4. Performance Benchmarks
+    const perfCtx = document.getElementById("performanceChart")?.getContext("2d");
+    if (perfCtx) {
+        new Chart(perfCtx, {
+            type: "bar",
+            data: {
+                labels: {{ chart_data.perf_labels | tojson }},
+                datasets: [{
+                    label: "Alerts per 1k Pkts",
+                    data: {{ chart_data.perf_values | tojson }},
+                    backgroundColor: "#06b6d4",
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: "#94a3b8" }, grid: { display: false } },
+                    y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.05)" } }
+                }
+            }
+        });
+    }
+
+    // 5. MITRE Distribution
+    const mitreCtx = document.getElementById("mitreChart")?.getContext("2d");
+    if (mitreCtx) {
+        new Chart(mitreCtx, {
+            type: "bar",
+            data: {
+                labels: {{ chart_data.mitre_labels | tojson }},
+                datasets: [{
+                    label: "Rules Mapped",
+                    data: {{ chart_data.mitre_values | tojson }},
+                    backgroundColor: "#8b5cf6",
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: "y",
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: "#94a3b8", precision: 0 }, grid: { color: "rgba(255,255,255,0.05)" } },
+                    y: { ticks: { color: "#94a3b8" }, grid: { display: false } }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

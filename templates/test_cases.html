@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}Test Cases — SecuRift Detection Validation{% endblock %}
+{% block page_title %}Detection Test Cases Matrix{% endblock %}
+
+{% block content %}
+<!-- Top Header & Filter Actions -->
+<div class="soc-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h3 class="soc-card-title">Controlled Detection Test Registry</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                Document expected vs observed detection behavior against network traffic captures.
+            </p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn-soc btn-soc-cyan" onclick="document.getElementById('createTestModal').style.display='flex'">
+                + Create New Test Case
+            </button>
+            <form method="POST" action="{{ url_for('test_cases.run_all_evaluations') }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-soc btn-soc-primary">
+                    ⚡ Evaluate All Test Cases
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <form method="GET" action="{{ url_for('test_cases.index') }}" style="display: flex; gap: 1rem; margin-top: 1.25rem; flex-wrap: wrap; align-items: flex-end;">
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 160px;">
+            <label class="soc-label">Filter by Status</label>
+            <select name="status" class="soc-select" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                <option value="PASS" {% if request.args.get('status') == 'PASS' %}selected{% endif %}>PASS</option>
+                <option value="FAIL" {% if request.args.get('status') == 'FAIL' %}selected{% endif %}>FAIL</option>
+                <option value="NOT DETECTED" {% if request.args.get('status') == 'NOT DETECTED' %}selected{% endif %}>NOT DETECTED (FN)</option>
+                <option value="UNEXPECTED ALERT" {% if request.args.get('status') == 'UNEXPECTED ALERT' %}selected{% endif %}>UNEXPECTED ALERT (FP)</option>
+                <option value="PENDING" {% if request.args.get('status') == 'PENDING' %}selected{% endif %}>PENDING</option>
+            </select>
+        </div>
+
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 160px;">
+            <label class="soc-label">Filter by Severity</label>
+            <select name="severity" class="soc-select" onchange="this.form.submit()">
+                <option value="">All Severities</option>
+                <option value="Critical" {% if request.args.get('severity') == 'Critical' %}selected{% endif %}>Critical</option>
+                <option value="High" {% if request.args.get('severity') == 'High' %}selected{% endif %}>High</option>
+                <option value="Medium" {% if request.args.get('severity') == 'Medium' %}selected{% endif %}>Medium</option>
+                <option value="Low" {% if request.args.get('severity') == 'Low' %}selected{% endif %}>Low</option>
+            </select>
+        </div>
+
+        <div class="soc-form-group" style="margin-bottom: 0; flex-grow: 1;">
+            <label class="soc-label">Search Query</label>
+            <input type="text" name="q" class="soc-input" placeholder="Search by name, ID, or description..." value="{{ request.args.get('q', '') }}">
+        </div>
+
+        <button type="submit" class="btn-soc">Apply Filter</button>
+        {% if request.args %}
+        <a href="{{ url_for('test_cases.index') }}" class="btn-soc btn-soc-sm" style="color: var(--text-dim);">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Test Cases Table -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Test Cases ({{ test_cases|length }} Registered)</h3>
+    </div>
+
+    {% if test_cases and test_cases|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Test ID</th>
+                    <th>Test Case Name</th>
+                    <th>Category</th>
+                    <th>Target Rule</th>
+                    <th>PCAP File</th>
+                    <th>Data Source</th>
+                    <th>Expected</th>
+                    <th>Actual</th>
+                    <th>Evaluation Status</th>
+                    <th>Severity</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tc in test_cases %}
+                <tr>
+                    <td><code>{{ tc.test_id }}</code></td>
+                    <td>
+                        <strong>{{ tc.name }}</strong>
+                        {% if tc.description %}
+                        <div style="font-size: 0.725rem; color: var(--text-dim); margin-top: 2px;">{{ tc.description[:60] }}...</div>
+                        {% endif %}
+                    </td>
+                    <td><span class="badge-soc low">{{ tc.category }}</span></td>
+                    <td>
+                        {% if tc.rule %}
+                        <span title="{{ tc.rule.message }}">SID: <code>{{ tc.rule.sid }}</code></span>
+                        {% else %}
+                        <span style="color: var(--text-dim);">—</span>
+                        {% endif %}
+                    </td>
+                    <td><span style="font-size: 0.78rem;">{{ tc.pcap_file or 'None' }}</span></td>
+                    <td>
+                        <span class="badge-soc {{ 'cyan' if tc.data_source == 'REAL' else ('medium' if tc.data_source == 'IMPORTED' else 'pending') }}">
+                            {{ tc.data_source or 'DEMO' }}
+                        </span>
+                    </td>
+                    <td><span class="badge-soc {{ 'pass' if tc.expected_detection == 'Alert' else 'pending' }}">{{ tc.expected_detection }}</span></td>
+                    <td><span class="badge-soc {{ 'pass' if tc.actual_detection == 'Alert' else ('pending' if tc.actual_detection == 'No Alert' else 'heavy') }}">{{ tc.actual_detection }}</span></td>
+                    <td>
+                        <span class="badge-soc {{ 'pass' if tc.status == 'PASS' else ('fail' if tc.status in ['FAIL', 'NOT DETECTED'] else ('heavy' if tc.status == 'UNEXPECTED ALERT' else 'pending')) }}">
+                            {{ tc.status }}
+                        </span>
+                    </td>
+                    <td><span class="badge-soc {{ tc.severity | lower }}">{{ tc.severity }}</span></td>
+                    <td style="white-space: nowrap;">
+                        <form method="POST" action="{{ url_for('test_cases.evaluate_single', test_case_id=tc.id) }}" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-soc btn-soc-sm btn-soc-primary" title="Evaluate expected vs actual detection">Test</button>
+                        </form>
+                        <button class="btn-soc btn-soc-sm" onclick="openEditModal('{{ tc.id }}', '{{ tc.test_id }}', '{{ tc.name|replace('\'', '\\\'') }}', '{{ tc.category }}', '{{ tc.expected_detection }}', '{{ tc.actual_detection }}', '{{ tc.rule_id or '' }}', '{{ tc.severity }}', '{{ tc.pcap_file or '' }}', '{{ (tc.description or '')|replace('\'', '\\\'') }}')">Edit</button>
+                        <form method="POST" action="{{ url_for('test_cases.delete', test_case_id=tc.id) }}" style="display: inline;" onsubmit="return confirm('Delete test case {{ tc.test_id }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-soc btn-soc-sm btn-soc-danger">×</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-text">No test cases match your criteria. Create your first test case to begin detection verification.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal: Create Test Case -->
+<div id="createTestModal" class="soc-modal-backdrop" style="display: none;">
+    <div class="soc-modal">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Create Detection Test Case</h3>
+            <button class="btn-soc btn-soc-sm" onclick="document.getElementById('createTestModal').style.display='none'">✕</button>
+        </div>
+        <form method="POST" action="{{ url_for('test_cases.create') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label" for="test_id">Test ID *</label>
+                    <input type="text" id="test_id" name="test_id" class="soc-input" value="TC-{{ (test_cases|length + 1001) }}" required>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label" for="category">Category</label>
+                    <input type="text" id="category" name="category" class="soc-input" value="Network Service Scanning" required>
+                </div>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label" for="name">Test Case Name *</label>
+                <input type="text" id="name" name="name" class="soc-input" placeholder="e.g., Suspicious HTTP Scanning Probe" required>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label" for="description">Test Description / Scenario</label>
+                <textarea id="description" name="description" class="soc-textarea" placeholder="Describe the traffic scenario and what detection behaviour is expected..."></textarea>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label" for="expected_detection">Expected Detection *</label>
+                    <select id="expected_detection" name="expected_detection" class="soc-select">
+                        <option value="Alert">Alert (Expected to trigger rule)</option>
+                        <option value="No Alert">No Alert (Expected benign / pass)</option>
+                    </select>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label" for="rule_id">Target Rule (SID)</label>
+                    <select id="rule_id" name="rule_id" class="soc-select">
+                        <option value="">-- No Associated Rule --</option>
+                        {% for r in available_rules %}
+                        <option value="{{ r.id }}">SID {{ r.sid }}: {{ r.message[:40] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label" for="severity">Severity</label>
+                    <select id="severity" name="severity" class="soc-select">
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                        <option value="Critical">Critical</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label" for="pcap_file">Associated PCAP File</label>
+                    <select id="pcap_file" name="pcap_file" class="soc-select">
+                        <option value="">-- Select Uploaded PCAP --</option>
+                        {% for p in available_pcaps %}
+                        <option value="{{ p }}">{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+                <button type="button" class="btn-soc" onclick="document.getElementById('createTestModal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn-soc btn-soc-cyan">Save Test Case</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Edit Test Case -->
+<div id="editTestModal" class="soc-modal-backdrop" style="display: none;">
+    <div class="soc-modal">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Edit Test Case</h3>
+            <button class="btn-soc btn-soc-sm" onclick="document.getElementById('editTestModal').style.display='none'">✕</button>
+        </div>
+        <form id="editTestForm" method="POST" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label">Test ID</label>
+                    <input type="text" id="edit_test_id" name="test_id" class="soc-input" readonly>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label">Category</label>
+                    <input type="text" id="edit_category" name="category" class="soc-input" required>
+                </div>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label">Test Case Name</label>
+                <input type="text" id="edit_name" name="name" class="soc-input" required>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label">Description</label>
+                <textarea id="edit_description" name="description" class="soc-textarea"></textarea>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label">Expected Detection</label>
+                    <select id="edit_expected_detection" name="expected_detection" class="soc-select">
+                        <option value="Alert">Alert</option>
+                        <option value="No Alert">No Alert</option>
+                    </select>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label">Actual Detection</label>
+                    <select id="edit_actual_detection" name="actual_detection" class="soc-select">
+                        <option value="Alert">Alert</option>
+                        <option value="No Alert">No Alert</option>
+                        <option value="Untested">Untested</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label">Severity</label>
+                    <select id="edit_severity" name="severity" class="soc-select">
+                        <option value="Critical">Critical</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label">Target Rule (SID)</label>
+                    <select id="edit_rule_id" name="rule_id" class="soc-select">
+                        <option value="">-- No Associated Rule --</option>
+                        {% for r in available_rules %}
+                        <option value="{{ r.id }}">SID {{ r.sid }}: {{ r.message[:40] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label">PCAP File</label>
+                <input type="text" id="edit_pcap_file" name="pcap_file" class="soc-input">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+                <button type="button" class="btn-soc" onclick="document.getElementById('editTestModal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn-soc btn-soc-cyan">Update Test Case</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openEditModal(id, testId, name, category, expected, actual, ruleId, severity, pcap, desc) {
+    const modal = document.getElementById('editTestModal');
+    const form = document.getElementById('editTestForm');
+    form.action = `/test-cases/edit/${id}`;
+
+    document.getElementById('edit_test_id').value = testId;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_category').value = category;
+    document.getElementById('edit_expected_detection').value = expected;
+    document.getElementById('edit_actual_detection').value = actual;
+    document.getElementById('edit_rule_id').value = ruleId || '';
+    document.getElementById('edit_severity').value = severity;
+    document.getElementById('edit_pcap_file').value = pcap || '';
+    document.getElementById('edit_description').value = desc || '';
+
+    modal.style.display = 'flex';
+}
+</script>
+{% endblock %}

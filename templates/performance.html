@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Rule Performance & Benchmarking — SecuRift{% endblock %}
+{% block page_title %}Snort Signature Performance & Throughput Benchmarking{% endblock %}
+
+{% block content %}
+<!-- System Snort Availability Status Banner -->
+{% if not snort_installed %}
+<div class="soc-alert soc-alert-warning" style="margin-bottom: 1.25rem;">
+    <div>
+        <strong>⚠️ Snort is unavailable.</strong> Real Snort benchmarking cannot be performed. PCAP traffic analysis remains available under Baseline Traffic.
+    </div>
+</div>
+{% endif %}
+
+<!-- Benchmark Execution Card -->
+<div class="soc-card">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Run Benchmark Test on Snort Signature</h3>
+        {% if snort_installed %}
+        <span class="badge-soc pass">Real Snort Engine</span>
+        {% else %}
+        <span class="badge-soc pending">Snort Unavailable</span>
+        {% endif %}
+    </div>
+    <form method="POST" action="{{ url_for('performance.run_benchmark') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+            <div class="soc-form-group" style="flex-grow: 1; min-width: 220px; margin-bottom: 0;">
+                <label class="soc-label" for="rule_id">Select Snort Rule *</label>
+                <select id="rule_id" name="rule_id" class="soc-select" required>
+                    {% for r in rules %}
+                    <option value="{{ r.id }}">SID {{ r.sid }}: {{ r.message[:45] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="soc-form-group" style="flex-grow: 1; min-width: 220px; margin-bottom: 0;">
+                <label class="soc-label" for="pcap_file">Select Benchmark PCAP *</label>
+                <select id="pcap_file" name="pcap_file" class="soc-select" required>
+                    {% for p in pcaps %}
+                    <option value="{{ p }}">{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn-soc btn-soc-cyan" {% if not snort_installed %}disabled title="Real Snort execution requires Snort binary"{% endif %}>
+                ⚡ Execute Benchmark
+            </button>
+        </div>
+        <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim);">
+            *Evaluates signature against PCAP packet frames via real Snort process, recording exact execution elapsed time and alert density.
+        </div>
+    </form>
+</div>
+
+<!-- Performance Chart -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Signature Alert Density (Alerts per 1000 Packets)</h3>
+        <span class="badge-soc medium">Noise vs Efficiency Rating</span>
+    </div>
+    <div style="height: 250px; position: relative;">
+        <canvas id="perfBenchmarkChart"></canvas>
+    </div>
+</div>
+
+<!-- Performance Measurements Table -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Performance Benchmark History ({{ measurements|length }} Records)</h3>
+    </div>
+
+    {% if measurements and measurements|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Rule SID</th>
+                    <th>Rule Message</th>
+                    <th>Packets Processed</th>
+                    <th>Alerts Triggered</th>
+                    <th>Execution Time</th>
+                    <th>Alerts / 1000 Pkts</th>
+                    <th>Detection Rate</th>
+                    <th>Efficiency Status</th>
+                    <th>Data Source</th>
+                    <th>Recorded At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in measurements %}
+                <tr>
+                    <td><code>{{ m.rule.sid if m.rule else 'N/A' }}</code></td>
+                    <td><strong>{{ m.rule.message if m.rule else 'Unlinked Signature' }}</strong></td>
+                    <td>{{ m.packets_processed }}</td>
+                    <td>{{ m.alerts_generated }}</td>
+                    <td>{{ m.processing_time }}s</td>
+                    <td><code>{{ m.alerts_per_1000_packets }}</code></td>
+                    <td>
+                        {% if m.detection_rate is not none and m.detection_rate >= 0 %}
+                        {{ m.detection_rate }}%
+                        {% else %}
+                        <span style="font-size: 0.75rem; color: var(--text-dim);">Insufficient validated test cases</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge-soc {{ 'pass' if m.status == 'Optimal' else ('heavy' if m.status == 'Resource-Heavy' else 'medium') }}">
+                            {{ m.status }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge-soc {{ 'cyan' if m.data_source == 'REAL_SNORT' else 'pending' }}">
+                            {{ m.data_source or m.measurement_type }}
+                        </span>
+                    </td>
+                    <td style="color: var(--text-dim); font-size: 0.75rem;">
+                        {{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">⏱️</div>
+        <div class="empty-state-text">No performance benchmarks recorded yet. Run a benchmark test using the form above.</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const ctx = document.getElementById("perfBenchmarkChart")?.getContext("2d");
+    if (ctx) {
+        new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: {{ chart_labels | tojson }},
+                datasets: [{
+                    label: "Alerts / 1,000 Packets",
+                    data: {{ chart_values | tojson }},
+                    backgroundColor: "#06b6d4",
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: "#94a3b8" }, grid: { display: false } },
+                    y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.05)" } }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

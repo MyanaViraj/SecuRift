@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}MITRE ATT&CK Mapping — SecuRift{% endblock %}
+{% block page_title %}MITRE ATT&CK Enterprise Matrix Alignment{% endblock %}
+
+{% block content %}
+<!-- MITRE Philosophy Disclaimer Banner -->
+<div class="soc-card" style="border-left: 4px solid var(--purple-accent);">
+    <h3 class="soc-card-title" style="color: var(--purple-accent);">
+        MITRE ATT&CK Defensive Mapping Rationale
+    </h3>
+    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.35rem; line-height: 1.5;">
+        <em>"Detection mapping based on the documented detection logic."</em><br>
+        In accordance with defensive detection engineering methodology, network signatures are mapped to adversary techniques based on the observable indicators specified in the detection logic, rather than asserting definitive forensic attribution.
+    </p>
+</div>
+
+<!-- Controls & Actions -->
+<div class="soc-card" style="margin-top: 1rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h3 class="soc-card-title">Mapped Techniques ({{ mappings|length }} Active Alignments)</h3>
+            <span style="font-size: 0.8rem; color: var(--text-dim);">Correlates custom rules with adversary tactics</span>
+        </div>
+        <button class="btn-soc btn-soc-cyan" onclick="document.getElementById('createMitreModal').style.display='flex'">
+            + Add MITRE Mapping
+        </button>
+    </div>
+</div>
+
+<!-- MITRE Mappings Table -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    {% if mappings and mappings|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Technique ID</th>
+                    <th>Technique Name</th>
+                    <th>Tactic</th>
+                    <th>Associated Rule (SID)</th>
+                    <th>Documented Detection Logic</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in mappings %}
+                <tr>
+                    <td><span class="badge-soc purple"><strong>{{ m.technique_id }}</strong></span></td>
+                    <td><strong>{{ m.technique_name }}</strong></td>
+                    <td><span class="badge-soc low">{{ m.tactic }}</span></td>
+                    <td>
+                        {% if m.rule %}
+                        <code>SID: {{ m.rule.sid }}</code> ({{ m.rule.message[:25] }})
+                        {% else %}
+                        <span style="color: var(--text-dim);">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 0.8rem; max-width: 280px; color: var(--text-muted);">
+                        {{ m.detection_logic }}
+                    </td>
+                    <td><span class="badge-soc {{ m.severity | lower }}">{{ m.severity }}</span></td>
+                    <td>
+                        <span class="badge-soc {{ 'pass' if m.validation_status == 'Validated' else 'medium' }}">
+                            {{ m.validation_status }}
+                        </span>
+                    </td>
+                    <td style="white-space: nowrap;">
+                        <button class="btn-soc btn-soc-sm" onclick="openEditMitreModal('{{ m.id }}', '{{ m.technique_id }}', '{{ m.technique_name|replace('\'', '\\\'') }}', '{{ m.tactic }}', '{{ m.rule_id }}', '{{ m.severity }}', '{{ m.validation_status }}', '{{ m.detection_logic|replace('\'', '\\\'') }}')">Edit</button>
+                        <form method="POST" action="{{ url_for('mitre.delete', mapping_id=m.id) }}" style="display: inline;" onsubmit="return confirm('Delete MITRE mapping {{ m.technique_id }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-soc btn-soc-sm btn-soc-danger">×</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">🎯</div>
+        <div class="empty-state-text">No MITRE ATT&CK mappings recorded yet. Add your first technique alignment above.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal: Add MITRE Mapping -->
+<div id="createMitreModal" class="soc-modal-backdrop" style="display: none;">
+    <div class="soc-modal">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Add MITRE ATT&CK Mapping</h3>
+            <button class="btn-soc btn-soc-sm" onclick="document.getElementById('createMitreModal').style.display='none'">✕</button>
+        </div>
+        <form method="POST" action="{{ url_for('mitre.create') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="soc-form-group">
+                <label class="soc-label" for="technique_select">Quick Select from Catalog (Optional)</label>
+                <select id="technique_select" class="soc-select" onchange="autoFillCatalog(this.value)">
+                    <option value="">-- Choose Common Technique --</option>
+                    {% for cat in catalog %}
+                    <option value="{{ cat.id }}" data-name="{{ cat.name }}" data-tactic="{{ cat.tactic }}" data-logic="{{ cat.detection_logic_template }}">
+                        {{ cat.id }} — {{ cat.name }} ({{ cat.tactic }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label" for="technique_id">Technique ID *</label>
+                    <input type="text" id="technique_id" name="technique_id" class="soc-input" placeholder="e.g. T1046" required>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label" for="technique_name">Technique Name *</label>
+                    <input type="text" id="technique_name" name="technique_name" class="soc-input" placeholder="e.g. Network Service Scanning" required>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label" for="tactic">Tactic</label>
+                    <input type="text" id="tactic" name="tactic" class="soc-input" placeholder="Discovery / Initial Access / C2" value="Discovery" required>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label" for="rule_id">Target Snort Rule *</label>
+                    <select id="rule_id" name="rule_id" class="soc-select" required>
+                        {% for r in available_rules %}
+                        <option value="{{ r.id }}">SID {{ r.sid }}: {{ r.message[:35] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label" for="severity">Severity</label>
+                    <select id="severity" name="severity" class="soc-select">
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                        <option value="Critical">Critical</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label" for="validation_status">Validation Status</label>
+                    <select id="validation_status" name="validation_status" class="soc-select">
+                        <option value="Validated">Validated</option>
+                        <option value="Candidate">Candidate</option>
+                        <option value="Under Review">Under Review</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label" for="detection_logic">Documented Detection Logic *</label>
+                <textarea id="detection_logic" name="detection_logic" class="soc-textarea" required placeholder="Detection mapping based on the documented detection logic: Describe the observable network artifact..."></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem;">
+                <button type="button" class="btn-soc" onclick="document.getElementById('createMitreModal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn-soc btn-soc-cyan">Save MITRE Mapping</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Edit MITRE Mapping -->
+<div id="editMitreModal" class="soc-modal-backdrop" style="display: none;">
+    <div class="soc-modal">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Edit MITRE ATT&CK Mapping</h3>
+            <button class="btn-soc btn-soc-sm" onclick="document.getElementById('editMitreModal').style.display='none'">✕</button>
+        </div>
+        <form id="editMitreForm" method="POST" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label">Technique ID</label>
+                    <input type="text" id="edit_technique_id" name="technique_id" class="soc-input" required>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label">Technique Name</label>
+                    <input type="text" id="edit_technique_name" name="technique_name" class="soc-input" required>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label">Tactic</label>
+                    <input type="text" id="edit_tactic" name="tactic" class="soc-input" required>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label">Rule</label>
+                    <select id="edit_rule_id" name="rule_id" class="soc-select" required>
+                        {% for r in available_rules %}
+                        <option value="{{ r.id }}">SID {{ r.sid }}: {{ r.message[:35] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="soc-form-group">
+                    <label class="soc-label">Severity</label>
+                    <select id="edit_severity" name="severity" class="soc-select">
+                        <option value="Critical">Critical</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+                <div class="soc-form-group">
+                    <label class="soc-label">Validation Status</label>
+                    <select id="edit_validation_status" name="validation_status" class="soc-select">
+                        <option value="Validated">Validated</option>
+                        <option value="Candidate">Candidate</option>
+                        <option value="Under Review">Under Review</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label">Documented Detection Logic</label>
+                <textarea id="edit_detection_logic" name="detection_logic" class="soc-textarea" required></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem;">
+                <button type="button" class="btn-soc" onclick="document.getElementById('editMitreModal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn-soc btn-soc-cyan">Update Mapping</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function autoFillCatalog(val) {
+    const sel = document.getElementById("technique_select");
+    const opt = sel.options[sel.selectedIndex];
+    if (!val || !opt) return;
+
+    document.getElementById("technique_id").value = val;
+    document.getElementById("technique_name").value = opt.getAttribute("data-name") || "";
+    document.getElementById("tactic").value = opt.getAttribute("data-tactic") || "";
+    document.getElementById("detection_logic").value = opt.getAttribute("data-logic") || "";
+}
+
+function openEditMitreModal(id, tid, tname, tactic, ruleId, severity, status, logic) {
+    const modal = document.getElementById('editMitreModal');
+    const form = document.getElementById('editMitreForm');
+    form.action = `/mitre/edit/${id}`;
+
+    document.getElementById('edit_technique_id').value = tid;
+    document.getElementById('edit_technique_name').value = tname;
+    document.getElementById('edit_tactic').value = tactic;
+    document.getElementById('edit_rule_id').value = ruleId;
+    document.getElementById('edit_severity').value = severity;
+    document.getElementById('edit_validation_status').value = status;
+    document.getElementById('edit_detection_logic').value = logic;
+
+    modal.style.display = 'flex';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit Rule' if rule else 'Add Custom Snort Rule' }} — SecuRift{% endblock %}
+{% block page_title %}{{ 'Modify Signature SID ' ~ rule.sid if rule else 'Create Custom Snort Rule' }}{% endblock %}
+
+{% block content %}
+<div class="soc-card" style="max-width: 900px; margin: 0 auto;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">{{ 'Edit Snort Detection Rule' if rule else 'Design New Snort Detection Signature' }}</h3>
+        <a href="{{ url_for('rules.index') }}" class="btn-soc btn-soc-sm">Back to Rules List</a>
+    </div>
+
+    <form method="POST" action="{{ url_for('rules.edit', rule_id=rule.id) if rule else url_for('rules.create') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <!-- Raw Snort Rule Definition & Live Syntax Checker -->
+        <div class="soc-form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <label class="soc-label" for="rule_text">Complete Snort Rule Text *</label>
+                <button type="button" id="btnValidateRule" class="btn-soc btn-soc-sm btn-soc-cyan">
+                    🔍 Test Rule Syntax
+                </button>
+            </div>
+            <textarea id="rule_text" name="rule_text" class="soc-textarea" style="font-family: monospace; font-size: 0.85rem;" rows="3" required placeholder='alert tcp any any -> any 80 (msg:"SecuRift Custom HTTP Detection"; sid:1000001; rev:1; classtype:attempted-admin;)'>{{ rule.rule_text if rule else '' }}</textarea>
+            <div id="validationResultBox"></div>
+        </div>
+
+        <!-- Header Structure Breakdown -->
+        <div style="margin: 1.25rem 0 0.5rem 0; font-size: 0.85rem; font-weight: 600; color: var(--cyan-accent); text-transform: uppercase; letter-spacing: 0.5px;">
+            Structured Rule Metadata
+        </div>
+
+        <div class="grid-3">
+            <div class="soc-form-group">
+                <label class="soc-label" for="sid">Signature ID (SID) *</label>
+                <input type="number" id="sid" name="sid" class="soc-input" value="{{ rule.sid if rule else next_sid }}" required>
+                <div style="font-size: 0.7rem; color: var(--text-dim); margin-top: 2px;">Local custom rules: &ge; 1000000</div>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="action">Action *</label>
+                <select id="action" name="action" class="soc-select">
+                    <option value="alert" {% if not rule or rule.action == 'alert' %}selected{% endif %}>alert</option>
+                    <option value="log" {% if rule and rule.action == 'log' %}selected{% endif %}>log</option>
+                    <option value="pass" {% if rule and rule.action == 'pass' %}selected{% endif %}>pass</option>
+                    <option value="drop" {% if rule and rule.action == 'drop' %}selected{% endif %}>drop</option>
+                    <option value="reject" {% if rule and rule.action == 'reject' %}selected{% endif %}>reject</option>
+                </select>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="protocol">Protocol *</label>
+                <select id="protocol" name="protocol" class="soc-select">
+                    <option value="tcp" {% if not rule or rule.protocol == 'tcp' %}selected{% endif %}>TCP</option>
+                    <option value="udp" {% if rule and rule.protocol == 'udp' %}selected{% endif %}>UDP</option>
+                    <option value="icmp" {% if rule and rule.protocol == 'icmp' %}selected{% endif %}>ICMP</option>
+                    <option value="ip" {% if rule and rule.protocol == 'ip' %}selected{% endif %}>IP</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid-3">
+            <div class="soc-form-group">
+                <label class="soc-label" for="source_ip">Source IP / CIDR</label>
+                <input type="text" id="source_ip" name="source_ip" class="soc-input" value="{{ rule.source_ip if rule else 'any' }}" required>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="source_port">Source Port</label>
+                <input type="text" id="source_port" name="source_port" class="soc-input" value="{{ rule.source_port if rule else 'any' }}" required>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="direction">Direction</label>
+                <select id="direction" name="direction" class="soc-select">
+                    <option value="->" {% if not rule or rule.direction == '->' %}selected{% endif %}>-> (Unidirectional)</option>
+                    <option value="<>" {% if rule and rule.direction == '<>' %}selected{% endif %}><> (Bidirectional)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="soc-form-group">
+                <label class="soc-label" for="destination_ip">Destination IP / CIDR</label>
+                <input type="text" id="destination_ip" name="destination_ip" class="soc-input" value="{{ rule.destination_ip if rule else 'any' }}" required>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="destination_port">Destination Port</label>
+                <input type="text" id="destination_port" name="destination_port" class="soc-input" value="{{ rule.destination_port if rule else 'any' }}" required>
+            </div>
+        </div>
+
+        <div class="grid-3">
+            <div class="soc-form-group">
+                <label class="soc-label" for="message">Alert Message (msg) *</label>
+                <input type="text" id="message" name="message" class="soc-input" value="{{ rule.message if rule else '' }}" placeholder="SecuRift Custom Detection" required>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="revision">Revision (rev)</label>
+                <input type="number" id="revision" name="revision" class="soc-input" value="{{ rule.revision if rule else 1 }}" required>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="severity">Severity Level</label>
+                <select id="severity" name="severity" class="soc-select">
+                    <option value="Low" {% if rule and rule.severity == 'Low' %}selected{% endif %}>Low</option>
+                    <option value="Medium" {% if not rule or rule.severity == 'Medium' %}selected{% endif %}>Medium</option>
+                    <option value="High" {% if rule and rule.severity == 'High' %}selected{% endif %}>High</option>
+                    <option value="Critical" {% if rule and rule.severity == 'Critical' %}selected{% endif %}>Critical</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="soc-form-group">
+                <label class="soc-label" for="classification">Classification (classtype)</label>
+                <input type="text" id="classification" name="classification" class="soc-input" value="{{ rule.classification if rule else 'attempted-admin' }}">
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="mitre_technique">MITRE ATT&CK Mapping</label>
+                <input type="text" id="mitre_technique" name="mitre_technique" class="soc-input" placeholder="e.g., T1046 or T1071.001" value="{{ rule.mitre_technique if rule else '' }}">
+            </div>
+        </div>
+
+        <!-- Defensive Engineering Documentation -->
+        <div style="margin: 1.25rem 0 0.5rem 0; font-size: 0.85rem; font-weight: 600; color: var(--cyan-accent); text-transform: uppercase; letter-spacing: 0.5px;">
+            Defensive Architecture & Detection Documentation
+        </div>
+
+        <div class="soc-form-group">
+            <label class="soc-label" for="purpose">Detection Purpose</label>
+            <textarea id="purpose" name="purpose" class="soc-textarea" placeholder="Explain the security objective: Why is this signature deployed? What adversary behavior does it guard against?">{{ rule.purpose if rule else '' }}</textarea>
+        </div>
+
+        <div class="grid-2">
+            <div class="soc-form-group">
+                <label class="soc-label" for="trigger_condition">Trigger Condition</label>
+                <textarea id="trigger_condition" name="trigger_condition" class="soc-textarea" placeholder="Exact packet contents, flags, port thresholds, or regex patterns that cause the rule to fire.">{{ rule.trigger_condition if rule else '' }}</textarea>
+            </div>
+            <div class="soc-form-group">
+                <label class="soc-label" for="expected_behavior">Expected Behaviour</label>
+                <textarea id="expected_behavior" name="expected_behavior" class="soc-textarea" placeholder="Observable symptoms in network traffic and expected analyst alert outcome.">{{ rule.expected_behavior if rule else '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="soc-form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+            <input type="checkbox" id="enabled" name="enabled" value="true" {% if not rule or rule.enabled %}checked{% endif %}>
+            <label for="enabled" style="font-size: 0.85rem; cursor: pointer; color: #fff;">Enable this detection rule in active inspections</label>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+            <a href="{{ url_for('rules.index') }}" class="btn-soc">Cancel</a>
+            <button type="submit" class="btn-soc btn-soc-cyan">
+                {{ 'Save Changes' if rule else 'Register Detection Rule' }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

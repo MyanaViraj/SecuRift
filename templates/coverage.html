@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Detection Coverage Matrix — SecuRift{% endblock %}
+{% block page_title %}Detection Coverage Matrix & Audit Trail{% endblock %}
+
+{% block content %}
+<!-- Control Card -->
+<div class="soc-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h3 class="soc-card-title">Defensive Coverage Matrix</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                Cross-references Snort rules, validation test vectors, severity, and MITRE ATT&CK techniques.
+            </p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('coverage.export_csv') }}" class="btn-soc btn-soc-cyan">⬇ Export Matrix CSV</a>
+            <a href="{{ url_for('reports.generate_coverage_pdf_route') }}" class="btn-soc btn-soc-primary">📄 Download Audit PDF</a>
+        </div>
+    </div>
+
+    <!-- Filter Form -->
+    <form method="GET" action="{{ url_for('coverage.index') }}" style="display: flex; gap: 1rem; margin-top: 1.25rem; flex-wrap: wrap; align-items: flex-end;">
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 140px;">
+            <label class="soc-label">Status</label>
+            <select name="status" class="soc-select" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                <option value="PASS" {% if request.args.get('status') == 'PASS' %}selected{% endif %}>PASS</option>
+                <option value="FAIL" {% if request.args.get('status') == 'FAIL' %}selected{% endif %}>FAIL</option>
+                <option value="NOT DETECTED" {% if request.args.get('status') == 'NOT DETECTED' %}selected{% endif %}>NOT DETECTED</option>
+                <option value="UNEXPECTED ALERT" {% if request.args.get('status') == 'UNEXPECTED ALERT' %}selected{% endif %}>UNEXPECTED ALERT</option>
+            </select>
+        </div>
+
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 140px;">
+            <label class="soc-label">Severity</label>
+            <select name="severity" class="soc-select" onchange="this.form.submit()">
+                <option value="">All Severities</option>
+                <option value="Critical" {% if request.args.get('severity') == 'Critical' %}selected{% endif %}>Critical</option>
+                <option value="High" {% if request.args.get('severity') == 'High' %}selected{% endif %}>High</option>
+                <option value="Medium" {% if request.args.get('severity') == 'Medium' %}selected{% endif %}>Medium</option>
+                <option value="Low" {% if request.args.get('severity') == 'Low' %}selected{% endif %}>Low</option>
+            </select>
+        </div>
+
+        <div class="soc-form-group" style="margin-bottom: 0; min-width: 160px;">
+            <label class="soc-label">MITRE Technique</label>
+            <input type="text" name="mitre" class="soc-input" placeholder="e.g. T1046" value="{{ request.args.get('mitre', '') }}">
+        </div>
+
+        <button type="submit" class="btn-soc">Apply Filter</button>
+        {% if request.args %}
+        <a href="{{ url_for('coverage.index') }}" class="btn-soc btn-soc-sm" style="color: var(--text-dim);">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Matrix Table -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Coverage Matrix Records ({{ matrix_rows|length }} Mappings)</h3>
+    </div>
+
+    {% if matrix_rows and matrix_rows|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Detection / Signature Name</th>
+                    <th>Rule SID</th>
+                    <th>Test Case</th>
+                    <th>Expected</th>
+                    <th>Actual</th>
+                    <th>Severity</th>
+                    <th>MITRE Technique</th>
+                    <th>Validation Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in matrix_rows %}
+                <tr>
+                    <td><strong>{{ row.detection }}</strong></td>
+                    <td><code>{{ row.sid }}</code></td>
+                    <td><span class="badge-soc low">{{ row.test_id }}</span></td>
+                    <td>{{ row.expected }}</td>
+                    <td>{{ row.actual }}</td>
+                    <td><span class="badge-soc {{ row.severity | lower }}">{{ row.severity }}</span></td>
+                    <td>
+                        <span class="badge-soc purple">{{ row.mitre }}</span>
+                    </td>
+                    <td>
+                        <span class="badge-soc {{ 'pass' if row.status == 'PASS' else ('fail' if row.status in ['FAIL', 'NOT DETECTED'] else ('heavy' if row.status == 'UNEXPECTED ALERT' else 'pending')) }}">
+                            {{ row.status }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📊</div>
+        <div class="empty-state-text">No detection coverage records found matching the active criteria.</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

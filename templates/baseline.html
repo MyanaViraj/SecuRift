@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}Baseline Traffic Analysis — SecuRift{% endblock %}
+{% block page_title %}Network Baseline Traffic Analysis{% endblock %}
+
+{% block content %}
+<!-- Upload PCAP Box -->
+<div class="soc-card">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Upload Network Capture (PCAP / PCAPNG)</h3>
+        <span class="badge-soc cyan">Scapy & tshark Deep Packet Inspection</span>
+    </div>
+    <form method="POST" action="{{ url_for('baseline.upload') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+            <div class="soc-form-group" style="flex-grow: 1; margin-bottom: 0;">
+                <label class="soc-label" for="pcap_file">Select Capture File (.pcap, .pcapng, .cap)</label>
+                <input type="file" id="pcap_file" name="pcap_file" class="soc-input" accept=".pcap,.pcapng,.cap" required>
+            </div>
+            <button type="submit" class="btn-soc btn-soc-cyan">
+                <span>Start Packet Inspection</span>
+            </button>
+        </div>
+        <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim);">
+            *Max upload size: 50MB. Analyzed locally in memory without executing payloads.
+        </div>
+    </form>
+</div>
+
+<!-- Active / Latest Analysis View -->
+{% if current_analysis %}
+<div class="stat-grid" style="margin-top: 1rem;">
+    <div class="stat-card cyan">
+        <span class="stat-label">Inspected PCAP</span>
+        <span class="stat-value" style="font-size: 1.25rem; word-break: break-all;">{{ current_analysis.filename }}</span>
+        <span class="stat-sub">Analyzed in {{ current_analysis.analysis_time }}s</span>
+    </div>
+    <div class="stat-card blue">
+        <span class="stat-label">Total Packets</span>
+        <span class="stat-value">{{ current_analysis.total_packets | number_format }}</span>
+        <span class="stat-sub">Frames Processed</span>
+    </div>
+    <div class="stat-card success">
+        <span class="stat-label">TCP Packets</span>
+        <span class="stat-value">{{ current_analysis.tcp_packets | number_format }}</span>
+        <span class="stat-sub">Transport Layer</span>
+    </div>
+    <div class="stat-card warning">
+        <span class="stat-label">UDP Packets</span>
+        <span class="stat-value">{{ current_analysis.udp_packets | number_format }}</span>
+        <span class="stat-sub">Datagram Traffic</span>
+    </div>
+    <div class="stat-card purple">
+        <span class="stat-label">DNS Queries</span>
+        <span class="stat-value">{{ current_analysis.dns_packets | number_format }}</span>
+        <span class="stat-sub">Port 53 Lookups</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">HTTP/HTTPS-like</span>
+        <span class="stat-value">{{ current_analysis.http_packets + current_analysis.https_packets }}</span>
+        <span class="stat-sub">TCP/80 & TCP/443 Heuristics</span>
+    </div>
+</div>
+
+<!-- Visualizations Row -->
+<div class="grid-2" style="margin-top: 1rem;">
+    <!-- Protocol Chart -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Protocol Distribution</h3>
+            <span class="badge-soc low">L3/L4 Breakdown</span>
+        </div>
+        <div style="height: 250px; position: relative;">
+            <canvas id="baselineProtoChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Packet Frequency Timeline -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Packet Frequency Timeline</h3>
+            <span class="badge-soc cyan">Traffic Ingestion Rate</span>
+        </div>
+        <div style="height: 250px; position: relative;">
+            <canvas id="baselineTimelineChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Top Talkers Breakdown -->
+<div class="grid-2" style="margin-top: 1rem;">
+    <!-- Top Source IPs -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Top Source IP Addresses</h3>
+            <span class="badge-soc medium">Inbound / Egress</span>
+        </div>
+        <div class="soc-table-wrapper">
+            <table class="soc-table">
+                <thead>
+                    <tr>
+                        <th>Source IP</th>
+                        <th>Packet Count</th>
+                        <th>Share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in current_analysis.get_source_ips() %}
+                    <tr>
+                        <td><code>{{ item.ip }}</code></td>
+                        <td>{{ item.count }}</td>
+                        <td>
+                            {% if current_analysis.total_packets > 0 %}
+                            {{ ((item.count / current_analysis.total_packets) * 100) | round(1) }}%
+                            {% else %}0%{% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" style="text-align: center; color: var(--text-dim);">No IP data extracted.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Top Destination IPs -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">Top Destination IP Addresses</h3>
+            <span class="badge-soc medium">Target Nodes</span>
+        </div>
+        <div class="soc-table-wrapper">
+            <table class="soc-table">
+                <thead>
+                    <tr>
+                        <th>Destination IP</th>
+                        <th>Packet Count</th>
+                        <th>Share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in current_analysis.get_destination_ips() %}
+                    <tr>
+                        <td><code>{{ item.ip }}</code></td>
+                        <td>{{ item.count }}</td>
+                        <td>
+                            {% if current_analysis.total_packets > 0 %}
+                            {{ ((item.count / current_analysis.total_packets) * 100) | round(1) }}%
+                            {% else %}0%{% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" style="text-align: center; color: var(--text-dim);">No IP data extracted.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Stored PCAP Analyses History -->
+<div class="soc-card" style="margin-top: 1.5rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Stored Baseline Analysis Captures</h3>
+        <span class="badge-soc pending">{{ analyses|length }} Stored Records</span>
+    </div>
+    {% if analyses and analyses|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Total Packets</th>
+                    <th>TCP</th>
+                    <th>UDP</th>
+                    <th>DNS</th>
+                    <th>Web (HTTP/S)</th>
+                    <th>Duration</th>
+                    <th>Analysis Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in analyses %}
+                <tr>
+                    <td><strong>{{ a.filename }}</strong></td>
+                    <td>{{ a.total_packets }}</td>
+                    <td>{{ a.tcp_packets }}</td>
+                    <td>{{ a.udp_packets }}</td>
+                    <td>{{ a.dns_packets }}</td>
+                    <td>{{ a.http_packets + a.https_packets }}</td>
+                    <td>{{ a.analysis_time }}s</td>
+                    <td style="color: var(--text-dim); font-size: 0.78rem;">{{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <a href="{{ url_for('baseline.view_analysis', analysis_id=a.id) }}" class="btn-soc btn-soc-sm">View Details</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📡</div>
+        <div class="empty-state-text">No PCAP analysis has been performed yet. Upload a network capture above to establish baseline metrics.</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if current_analysis %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // Protocol Doughnut
+    const protoCtx = document.getElementById("baselineProtoChart")?.getContext("2d");
+    const rawProtos = {{ current_analysis.get_protocols() | tojson }};
+    if (protoCtx) {
+        new Chart(protoCtx, {
+            type: "doughnut",
+            data: {
+                labels: Object.keys(rawProtos),
+                datasets: [{
+                    data: Object.values(rawProtos),
+                    backgroundColor: ["#06b6d4", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#64748b"],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: "bottom", labels: { color: "#94a3b8", font: { size: 11 } } } }
+            }
+        });
+    }
+
+    // Timeline Line Chart
+    const timeCtx = document.getElementById("baselineTimelineChart")?.getContext("2d");
+    const rawTimeline = {{ current_analysis.get_packet_frequency() | tojson }};
+    if (timeCtx) {
+        new Chart(timeCtx, {
+            type: "line",
+            data: {
+                labels: rawTimeline.map(t => t.time),
+                datasets: [{
+                    label: "Packets",
+                    data: rawTimeline.map(t => t.packets),
+                    borderColor: "#06b6d4",
+                    backgroundColor: "rgba(6, 182, 212, 0.1)",
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.05)" } },
+                    y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.05)" } }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

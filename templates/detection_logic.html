@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Detection Logic Architecture — SecuRift{% endblock %}
+{% block page_title %}Detection Logic & Threat Signature Rationale{% endblock %}
+
+{% block content %}
+<!-- Info Box -->
+<div class="soc-card" style="border-left: 4px solid var(--purple-accent);">
+    <h3 class="soc-card-title" style="color: var(--purple-accent);">
+        Defensive Architecture Specification
+    </h3>
+    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.35rem; line-height: 1.5;">
+        Every signature below contains documented detection logic, trigger thresholds, expected network behavior, and defensive rationale.
+        <strong>Engineering Principle:</strong> Traffic matching a signature validates the detection rule logic; it does not in itself constitute absolute forensic attribution.
+    </p>
+</div>
+
+<!-- Rule Selection / Filter -->
+<div class="soc-card" style="margin-top: 1rem;">
+    <form method="GET" action="{{ url_for('detection_logic.index') }}" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+        <div class="soc-form-group" style="flex-grow: 1; margin-bottom: 0;">
+            <label class="soc-label">Select Rule to Inspect Detection Architecture</label>
+            <select name="rule_id" class="soc-select" onchange="this.form.submit()">
+                <option value="">-- View All Documented Signatures --</option>
+                {% for r in all_rules %}
+                <option value="{{ r.id }}" {% if selected_rule and selected_rule.id == r.id %}selected{% endif %}>
+                    SID {{ r.sid }}: {{ r.message }} ({{ r.severity }})
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn-soc">View Signature</button>
+        {% if selected_rule %}
+        <a href="{{ url_for('detection_logic.index') }}" class="btn-soc btn-soc-sm">Show All</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Detection Logic Cards -->
+<div style="display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1.25rem;">
+    {% for r in displayed_rules %}
+    <div class="soc-card" style="border-top: 3px solid {{ '#ef4444' if r.severity in ['Critical', 'High'] else '#06b6d4' }};">
+        <div class="soc-card-header">
+            <div>
+                <span class="badge-soc {{ r.severity | lower }}">{{ r.severity }}</span>
+                <span class="badge-soc low" style="margin-left: 0.5rem;">SID: {{ r.sid }}</span>
+                {% if r.mitre_technique %}
+                <span class="badge-soc purple" style="margin-left: 0.5rem;">MITRE: {{ r.mitre_technique }}</span>
+                {% endif %}
+            </div>
+            <div>
+                <a href="{{ url_for('rules.edit', rule_id=r.id) }}" class="btn-soc btn-soc-sm">Edit Logic</a>
+            </div>
+        </div>
+
+        <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin-bottom: 0.75rem;">
+            {{ r.message }}
+        </h3>
+
+        <!-- Raw Rule Code Snippet -->
+        <div class="code-block" style="margin-bottom: 1rem;">{{ r.rule_text }}</div>
+
+        <div class="grid-2">
+            <div>
+                <div style="margin-bottom: 0.85rem;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--cyan-accent); font-weight: 600;">
+                        1. Defensive Purpose
+                    </div>
+                    <div style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem; line-height: 1.4;">
+                        {{ r.purpose or 'Signature deployed to detect unauthorized or abnormal network activity matching packet headers.' }}
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 0.85rem;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--cyan-accent); font-weight: 600;">
+                        2. Trigger Condition
+                    </div>
+                    <div style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem; line-height: 1.4;">
+                        {{ r.trigger_condition or ('Fires on ' ~ r.protocol|upper ~ ' packet from ' ~ r.source_ip ~ ':' ~ r.source_port ~ ' to ' ~ r.destination_ip ~ ':' ~ r.destination_port ~ ' matching configured content options.') }}
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div style="margin-bottom: 0.85rem;">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--cyan-accent); font-weight: 600;">
+                        3. Expected Behaviour
+                    </div>
+                    <div style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.25rem; line-height: 1.4;">
+                        {{ r.expected_behavior or 'Network sensor triggers single alert entry in fast.log and forwards event to SOC dashboard.' }}
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--cyan-accent); font-weight: 600;">
+                        4. Header Architecture
+                    </div>
+                    <div style="font-size: 0.825rem; color: #cbd5e1; margin-top: 0.25rem; font-family: monospace;">
+                        Action: <strong>{{ r.action }}</strong> | Protocol: <strong>{{ r.protocol|upper }}</strong> | Revision: <strong>{{ r.revision }}</strong><br>
+                        Endpoints: <code>{{ r.source_ip }}:{{ r.source_port }} {{ r.direction }} {{ r.destination_ip }}:{{ r.destination_port }}</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Associated Test Cases / Validation Trace -->
+        {% if r.test_cases and r.test_cases|length > 0 %}
+        <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <span style="font-size: 0.75rem; color: var(--text-dim);">Linked Validation Cases:</span>
+            {% for tc in r.test_cases %}
+            <span class="badge-soc {{ 'pass' if tc.status == 'PASS' else ('fail' if tc.status in ['FAIL', 'NOT DETECTED'] else 'pending') }}">
+                {{ tc.test_id }}: {{ tc.status }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📖</div>
+        <div class="empty-state-text">No custom rules available. Add custom rules to view detection logic architecture.</div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

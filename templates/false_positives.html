@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}False Positive Analysis — SecuRift Network Defence{% endblock %}
+{% block page_title %}False Positive & Signal-to-Noise Tuning{% endblock %}
+
+{% block content %}
+<!-- Metrics Summary Cards -->
+<div class="stat-grid">
+    <div class="stat-card cyan">
+        <span class="stat-label">Total Ingested Alerts</span>
+        <span class="stat-value" id="metric-total">{{ triage_summary.total_alerts }}</span>
+        <span class="stat-sub">From Real & Imported Sources</span>
+    </div>
+    <div class="stat-card warning">
+        <span class="stat-label">Reviewed vs Unknown</span>
+        <span class="stat-value">{{ triage_summary.reviewed_alerts }} / {{ triage_summary.unknown_alerts }}</span>
+        <span class="stat-sub">Triage Audit Completion</span>
+    </div>
+    <div class="stat-card success">
+        <span class="stat-label">Triaged True Positives</span>
+        <span class="stat-value" id="metric-tp">{{ triage_summary.true_positives }}</span>
+        <span class="stat-sub">Operator Validated</span>
+    </div>
+    <div class="stat-card danger">
+        <span class="stat-label">Triaged False Positives</span>
+        <span class="stat-value" id="metric-fp">{{ triage_summary.false_positives }}</span>
+        <span class="stat-sub">Spurious Benign Alerts</span>
+    </div>
+    <div class="stat-card purple">
+        <span class="stat-label">Cohort Detection Rate</span>
+        <span class="stat-value" id="metric-dr">{% if metrics.detection_rate != 'N/A' %}{{ metrics.detection_rate }}%{% else %}N/A{% endif %}</span>
+        <span class="stat-sub">Evaluated Cohort (N={{ metrics.sample_size }})</span>
+    </div>
+    <div class="stat-card blue">
+        <span class="stat-label">Cohort FP Rate</span>
+        <span class="stat-value" id="metric-fpr">{% if metrics.false_positive_rate != 'N/A' %}{{ metrics.false_positive_rate }}%{% else %}N/A{% endif %}</span>
+        <span class="stat-sub">FP / (FP + TN)</span>
+    </div>
+</div>
+
+<!-- Rule-wise False Positive Summary Table -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Rule-Wise Noise & False Positive Breakdown</h3>
+        <span class="badge-soc cyan">Rule Tuning Insights</span>
+    </div>
+    {% if rule_stats and rule_stats|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Rule SID</th>
+                    <th>Rule Message</th>
+                    <th>Total Alerts</th>
+                    <th>True Positives</th>
+                    <th>False Positives</th>
+                    <th>Rule FP Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rs in rule_stats %}
+                <tr>
+                    <td><code>{{ rs.sid }}</code></td>
+                    <td><strong>{{ rs.message }}</strong></td>
+                    <td>{{ rs.alerts }}</td>
+                    <td><span style="color: var(--green-accent);">{{ rs.tp }}</span></td>
+                    <td><span style="color: var(--red-accent);">{{ rs.fp }}</span></td>
+                    <td>
+                        <span class="badge-soc {{ 'pass' if rs.fp_rate < 10 else ('medium' if rs.fp_rate < 30 else 'fail') }}">
+                            {{ rs.fp_rate }}%
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 1.5rem;">
+        <div class="empty-state-text">No alerts available to compute rule-wise noise statistics.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Interactive Alert Classification Table -->
+<div class="soc-card" style="margin-top: 1.25rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Alert Triage & Classification Queue ({{ alerts|length }} Alerts)</h3>
+        <span class="badge-soc low">Click below to change classification live</span>
+    </div>
+
+    {% if alerts and alerts|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Timestamp</th>
+                    <th>SID</th>
+                    <th>Alert Message</th>
+                    <th>Source &rarr; Destination</th>
+                    <th>Severity</th>
+                    <th>Data Source</th>
+                    <th>Current Classification</th>
+                    <th>Analyst Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in alerts %}
+                <tr>
+                    <td>#{{ a.id }}</td>
+                    <td style="font-size: 0.75rem; color: var(--text-muted);">{{ a.timestamp }}</td>
+                    <td><code>{{ a.sid }}</code></td>
+                    <td>
+                        <strong>{{ a.message }}</strong>
+                        <div style="font-size: 0.72rem; color: var(--text-dim);">{{ a.classification }}</div>
+                    </td>
+                    <td style="font-size: 0.78rem;">
+                        <code>{{ a.source_ip }}:{{ a.source_port }} &rarr; {{ a.destination_ip }}:{{ a.destination_port }}</code>
+                    </td>
+                    <td><span class="badge-soc {{ a.severity | lower }}">{{ a.severity }}</span></td>
+                    <td>
+                        <span class="badge-soc {{ 'cyan' if a.data_source == 'REAL_SNORT' else ('medium' if a.data_source == 'IMPORTED_SNORT_LOG' else 'pending') }}">
+                            {{ a.data_source or 'DEMO' }}
+                        </span>
+                    </td>
+                    <td>
+                        <span id="badge-alert-{{ a.id }}" class="badge-soc {{ 'pass' if a.classification_state == 'True Positive' else ('fail' if a.classification_state == 'False Positive' else 'pending') }}">
+                            {{ a.classification_state }}
+                        </span>
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button type="button" class="btn-soc btn-soc-sm btn-soc-success" onclick="classifyAlert({{ a.id }}, 'True Positive')" title="Confirm as True Positive">
+                                ✓ TP
+                            </button>
+                            <button type="button" class="btn-soc btn-soc-sm btn-soc-danger" onclick="classifyAlert({{ a.id }}, 'False Positive')" title="Mark as False Positive">
+                                ✗ FP
+                            </button>
+                            <button type="button" class="btn-soc btn-soc-sm" onclick="classifyAlert({{ a.id }}, 'Unknown')" title="Reset to Unknown">
+                                ?
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">🔔</div>
+        <div class="empty-state-text">No alerts currently logged in database. Import Snort alerts or run packet inspection to triage alerts.</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuRift — Defensive Detection Engineering Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: radial-gradient(circle at 50% 20%, #172554, #0a0e17 80%);
+        }
+        .login-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 2.25rem;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 20px rgba(6, 182, 212, 0.15);
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-logo {
+            width: 52px;
+            height: 52px;
+            background: linear-gradient(135deg, var(--cyan-accent), var(--blue-accent));
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.6rem;
+            color: #fff;
+            box-shadow: 0 0 25px var(--cyan-glow);
+            margin-bottom: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo">SR</div>
+            <h2 style="font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px;">SecuRift</h2>
+            <p style="font-size: 0.8rem; color: var(--cyan-accent); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 0.25rem;">
+                Defensive Network Detection Platform
+            </p>
+            <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;">
+                Advanced Network Defence & Security Architecture (TYBCA)
+            </p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="soc-alert soc-alert-{{ 'danger' if category in ['error', 'danger'] else 'warning' }}">
+                        <span>{{ message }}</span>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('auth.login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="soc-form-group">
+                <label class="soc-label" for="username">Operator Username</label>
+                <input type="text" id="username" name="username" class="soc-input" placeholder="Enter username" required autofocus autocomplete="username">
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label" for="password">Security Credential (Password)</label>
+                <input type="password" id="password" name="password" class="soc-input" placeholder="Enter password" required autocomplete="current-password">
+            </div>
+
+            <button type="submit" class="btn-soc btn-soc-cyan" style="width: 100%; justify-content: center; margin-top: 1rem; padding: 0.75rem;">
+                Authenticate & Access Console
+            </button>
+        </form>
+
+        <div style="margin-top: 1.75rem; padding: 0.85rem; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.75rem;">
+            <div style="font-weight: 600; color: #fff; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+                <span style="color: var(--amber-accent);">ℹ</span> Demonstration Credentials
+            </div>
+            <div style="color: var(--text-muted); line-height: 1.4;">
+                Username: <code style="color: var(--cyan-accent);">admin</code><br>
+                Password: <code style="color: var(--cyan-accent);">admin123</code>
+            </div>
+            <div style="font-size: 0.7rem; color: var(--text-dim); margin-top: 0.4rem;">
+                *For college evaluation. Passwords are cryptographically salted and hashed with PBKDF2/SHA256 in SQLite.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Snort Detection Engine — SecuRift{% endblock %}
+{% block page_title %}Snort IDS Execution & Log Ingestion Console{% endblock %}
+
+{% block content %}
+<!-- System Snort Availability Status Banner -->
+{% if snort_status.installed %}
+<div class="soc-alert soc-alert-success">
+    <div>
+        <strong>✓ Snort Binary Detected:</strong> <code>{{ snort_status.path }}</code> ({{ snort_status.version }})
+    </div>
+</div>
+{% else %}
+<div class="soc-alert soc-alert-warning" style="flex-direction: column; align-items: flex-start;">
+    <div><strong>⚠️ Snort Executable Not Detected in System PATH</strong></div>
+    <div style="font-size: 0.8rem; margin-top: 0.35rem; color: #fde047;">
+        Snort executable not detected. You can still import existing Snort alerts, parse alert files (.log, .fast), manage rules, and perform PCAP inspection.
+    </div>
+</div>
+{% endif %}
+
+<!-- Execution & Import Grid -->
+<div class="grid-2">
+    <!-- Option A: Run Snort against PCAP -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">A. Execute Snort IDS against PCAP</h3>
+            {% if snort_status.installed %}
+            <span class="badge-soc pass">Ready</span>
+            {% else %}
+            <span class="badge-soc pending">Requires Snort Binary</span>
+            {% endif %}
+        </div>
+
+        <form method="POST" action="{{ url_for('snort.run_snort') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="soc-form-group">
+                <label class="soc-label" for="pcap_file">Select Target Capture (PCAP) *</label>
+                <select id="pcap_file" name="pcap_file" class="soc-select" required>
+                    <option value="">-- Choose Uploaded PCAP --</option>
+                    {% for p in available_pcaps %}
+                    <option value="{{ p }}">{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="soc-form-group">
+                <label class="soc-label" for="rule_scope">Active Rules Configuration</label>
+                <select id="rule_scope" name="rule_scope" class="soc-select">
+                    <option value="all_enabled">All Enabled Custom Rules ({{ enabled_rules_count }} rules)</option>
+                    {% for r in available_rules %}
+                    <option value="single_{{ r.id }}">Only SID {{ r.sid }}: {{ r.message[:40] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit" class="btn-soc btn-soc-cyan" {% if not snort_status.installed %}disabled title="Install Snort binary or use Option B below to import alerts"{% endif %}>
+                🚀 Run Snort Inspection
+            </button>
+        </form>
+    </div>
+
+    <!-- Option B: Import Existing Snort Alerts Log / Paste -->
+    <div class="soc-card">
+        <div class="soc-card-header">
+            <h3 class="soc-card-title">B. Ingest External Snort Alert Logs</h3>
+            <span class="badge-soc cyan">Log Parser</span>
+        </div>
+
+        <!-- File Upload Form -->
+        <form method="POST" action="{{ url_for('snort.upload_log') }}" enctype="multipart/form-data" style="margin-bottom: 1.25rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="soc-form-group">
+                <label class="soc-label" for="log_file">Upload Alert Log File (.fast, .log, .alert, .txt)</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="file" id="log_file" name="log_file" class="soc-input" accept=".log,.txt,.alert,.fast" required>
+                    <button type="submit" class="btn-soc btn-soc-primary">Upload</button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Direct Paste Form -->
+        <form method="POST" action="{{ url_for('snort.paste_log') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="soc-form-group">
+                <label class="soc-label" for="log_text">Or Paste Snort Fast Alert Text Directly</label>
+                <textarea id="log_text" name="log_text" class="soc-textarea" style="font-family: monospace; font-size: 0.8rem;" rows="3" placeholder="09/26-21:30:15.123456 [**] [1:1000001:1] SecuRift Custom HTTP Detection [**] [Classification: Web Application Attack] [Priority: 1] {TCP} 192.168.1.50:45231 -> 10.0.0.5:80"></textarea>
+            </div>
+            <button type="submit" class="btn-soc btn-soc-cyan">Parse & Store Alerts</button>
+        </form>
+    </div>
+</div>
+
+<!-- Snort Executions Audit Table -->
+<div class="soc-card" style="margin-top: 1.5rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Snort Executions & Runs Audit</h3>
+        <span class="badge-soc low">Auditable Evidence</span>
+    </div>
+    {% if executions and executions|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Execution ID</th>
+                    <th>Type</th>
+                    <th>PCAP Analysis</th>
+                    <th>Rule Set</th>
+                    <th>Snort Version</th>
+                    <th>Packets</th>
+                    <th>Alerts</th>
+                    <th>Elapsed (s)</th>
+                    <th>Status</th>
+                    <th>Started At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ex in executions %}
+                <tr>
+                    <td><code>#{{ ex.id }}</code></td>
+                    <td>
+                        <span class="badge-soc {{ 'pass' if ex.execution_type == 'REAL_SNORT' else 'pending' }}">
+                            {{ ex.execution_type }}
+                        </span>
+                    </td>
+                    <td>{{ ex.pcap_analysis.filename if ex.pcap_analysis else '—' }}</td>
+                    <td><code>{{ ex.rule_set }}</code></td>
+                    <td style="font-size: 0.78rem;">{{ ex.snort_version or 'Snort' }}</td>
+                    <td>{{ ex.packets_processed }}</td>
+                    <td><strong>{{ ex.alerts_generated }}</strong></td>
+                    <td>{{ "%.4f"|format(ex.processing_time) if ex.processing_time else '0.0' }}</td>
+                    <td><span class="badge-soc {{ 'pass' if ex.status == 'SUCCESS' else 'fail' }}">{{ ex.status }}</span></td>
+                    <td style="font-size: 0.75rem; color: var(--text-muted);">{{ ex.started_at.strftime('%Y-%m-%d %H:%M:%S') if ex.started_at else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">⏱️</div>
+        <div class="empty-state-text">No Snort executions recorded yet. Run Snort on a PCAP or run demo simulation.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Snort Alerts Ingestion Feed Table -->
+<div class="soc-card" style="margin-top: 1.5rem;">
+    <div class="soc-card-header">
+        <h3 class="soc-card-title">Ingested Snort Alerts ({{ alerts|length }} Records)</h3>
+        <a href="{{ url_for('false_positives.index') }}" class="btn-soc btn-soc-sm">Triage in FP Analysis</a>
+    </div>
+
+    {% if alerts and alerts|length > 0 %}
+    <div class="soc-table-wrapper">
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Alert ID</th>
+                    <th>Exec ID</th>
+                    <th>PCAP</th>
+                    <th>SID</th>
+                    <th>Alert Message</th>
+                    <th>Source &rarr; Destination</th>
+                    <th>Classification</th>
+                    <th>Severity</th>
+                    <th>Data Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in alerts %}
+                <tr>
+                    <td>#{{ a.id }}</td>
+                    <td>{{ ('#' ~ a.snort_execution_id) if a.snort_execution_id else '—' }}</td>
+                    <td><span style="font-size: 0.75rem;">{{ a.pcap_analysis.filename if a.pcap_analysis else '—' }}</span></td>
+                    <td><code>{{ a.sid }}</code></td>
+                    <td><strong>{{ a.message }}</strong></td>
+                    <td style="font-size: 0.78rem;">
+                        <code>{{ a.source_ip }}:{{ a.source_port }} &rarr; {{ a.destination_ip }}:{{ a.destination_port }}</code>
+                    </td>
+                    <td style="font-size: 0.78rem; color: var(--text-dim);">{{ a.classification }}</td>
+                    <td><span class="badge-soc {{ a.severity | lower }}">{{ a.severity }}</span></td>
+                    <td>
+                        <span class="badge-soc {{ 'cyan' if a.data_source == 'REAL_SNORT' else ('medium' if a.data_source == 'IMPORTED_SNORT_LOG' else 'pending') }}">
+                            {{ a.data_source or 'DEMO' }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">🛡️</div>
+        <div class="empty-state-text">No Snort alerts currently loaded. Import a log file or execute Snort to inspect alerts.</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
