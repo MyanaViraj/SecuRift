@@ -16,13 +16,16 @@ from analyzer.report_generator import (
 )
 
 
+TEST_PASSWORD = getattr(TestingConfig, "TEST_PASSWORD", "test-soc-operator-credential-2026")
+
+
 @pytest.fixture
 def app():
     app = create_app(TestingConfig)
     with app.app_context():
         db.create_all()
         admin = User(username="admin", role="Administrator")
-        admin.set_password("admin123")
+        admin.set_password(TEST_PASSWORD)
         db.session.add(admin)
 
         rule = Rule(
@@ -48,7 +51,7 @@ def client(app):
 
 def test_performance_without_snort_execution(client, app):
     """When Snort is not installed, real benchmarking must be rejected, not simulated."""
-    client.post("/login", data={"username": "admin", "password": "admin123"})
+    client.post("/login", data={"username": "admin", "password": TEST_PASSWORD})
 
     with patch("routes.performance.check_snort_installed", return_value=None):
         resp = client.post("/performance/run", data={
@@ -68,7 +71,7 @@ def test_performance_without_snort_execution(client, app):
 
 def test_performance_with_mock_snort_execution(client, app):
     """Verify benchmarking captures real elapsed time and real alert counts when Snort runs."""
-    client.post("/login", data={"username": "admin", "password": "admin123"})
+    client.post("/login", data={"username": "admin", "password": TEST_PASSWORD})
 
     # Ensure a target pcap exists in PCAP_FOLDER
     pcap_dir = app.config["PCAP_FOLDER"]
@@ -159,7 +162,7 @@ def test_pdf_reports_include_source_and_lineage_metadata(app):
 
 def test_csv_exports_include_data_source_column(client):
     """Verify CSV export routes return valid CSV with Data Source auditing columns."""
-    client.post("/login", data={"username": "admin", "password": "admin123"})
+    client.post("/login", data={"username": "admin", "password": TEST_PASSWORD})
 
     # Rules export
     resp_rules = client.get("/rules/export")

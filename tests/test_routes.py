@@ -5,6 +5,9 @@ from models import db
 from models.models import User, Rule, TestCase
 
 
+TEST_PASSWORD = getattr(TestingConfig, "TEST_PASSWORD", "test-soc-operator-credential-2026")
+
+
 @pytest.fixture
 def client():
     app = create_app(TestingConfig)
@@ -13,7 +16,7 @@ def client():
 
         # Seed admin user
         admin = User(username="admin", role="Lead Security Architect")
-        admin.set_password("admin123")
+        admin.set_password(TEST_PASSWORD)
         db.session.add(admin)
 
         # Seed a rule
@@ -51,7 +54,7 @@ def test_login_page_renders(client):
     response = client.get("/login")
     assert response.status_code == 200
     assert b"SecuRift" in response.data
-    assert b"admin123" in response.data
+    assert b"Operator Username" in response.data
 
 
 def test_unauthenticated_redirect(client):
@@ -63,7 +66,7 @@ def test_unauthenticated_redirect(client):
 def test_login_success(client):
     response = client.post("/login", data={
         "username": "admin",
-        "password": "admin123"
+        "password": TEST_PASSWORD
     }, follow_redirects=True)
     assert response.status_code == 200
     assert b"Security Operations Dashboard" in response.data
@@ -80,7 +83,7 @@ def test_login_failure(client):
 
 def test_authenticated_route_access(client):
     # Log in first
-    client.post("/login", data={"username": "admin", "password": "admin123"})
+    client.post("/login", data={"username": "admin", "password": TEST_PASSWORD})
 
     endpoints = [
         "/dashboard",
@@ -105,7 +108,7 @@ def test_authenticated_route_access(client):
 
 
 def test_csv_exports(client):
-    client.post("/login", data={"username": "admin", "password": "admin123"})
+    client.post("/login", data={"username": "admin", "password": TEST_PASSWORD})
 
     # Rules export
     r_resp = client.get("/rules/export")
@@ -121,7 +124,7 @@ def test_csv_exports(client):
 
 
 def test_pdf_report_generation(client):
-    client.post("/login", data={"username": "admin", "password": "admin123"})
+    client.post("/login", data={"username": "admin", "password": TEST_PASSWORD})
 
     # Report 1: Custom Snort Rules PDF
     r1 = client.get("/reports/generate-rules-pdf")

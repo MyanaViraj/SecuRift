@@ -47,14 +47,18 @@ from config import Config, TestingConfig
 
 def run_e2e_verification():
     app = create_app(TestingConfig)
+    test_password = getattr(TestingConfig, "TEST_PASSWORD", "test-soc-operator-credential-2026")
 
     with app.app_context():
         db.create_all()
         admin = User.query.filter_by(username="admin").first()
         if not admin:
             admin = User(username="admin", role="Administrator")
-            admin.set_password("admin123")
+            admin.set_password(test_password)
             db.session.add(admin)
+            db.session.commit()
+        else:
+            admin.set_password(test_password)
             db.session.commit()
 
         # Clean up any residual test records from prior runs
@@ -74,7 +78,7 @@ def run_e2e_verification():
         # STAGE 1: Login
         # -------------------------------------------------------------
         print("\n[+] Stage 1: Authentication & Session Establishment...")
-        login_res = client.post("/login", data={"username": "admin", "password": "admin123"}, follow_redirects=True)
+        login_res = client.post("/login", data={"username": "admin", "password": test_password}, follow_redirects=True)
         assert login_res.status_code == 200
         assert b"Security Operations Dashboard" in login_res.data
         print("    -> Login SUCCESS (Authenticated as Lead Security Architect)")

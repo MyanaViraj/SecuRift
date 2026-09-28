@@ -55,3 +55,4 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     WTF_CSRF_ENABLED = False
     SECRET_KEY = "test-csrf-and-secret-key-32-chars-long"
+    TEST_PASSWORD = os.environ.get("SECURIFT_TEST_PASSWORD", "test-soc-operator-credential-2026")

@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 from datetime import datetime, timezone
@@ -79,6 +80,27 @@ def generate_sample_pcaps(pcap_dir):
 
 
 def seed_database():
+    demo_password = os.environ.get("SECURIFT_DEMO_PASSWORD")
+    if not demo_password and os.path.exists(".env"):
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("SECURIFT_DEMO_PASSWORD="):
+                        val = line.split("=", 1)[1].strip().strip("\"'")
+                        if val:
+                            demo_password = val
+                            os.environ["SECURIFT_DEMO_PASSWORD"] = val
+                            break
+        except Exception:
+            pass
+
+    if not demo_password:
+        print("[!] ERROR: Environment variable 'SECURIFT_DEMO_PASSWORD' is not set.")
+        print("[!] Please configure SECURIFT_DEMO_PASSWORD in your environment or local .env file before running the demo seed workflow.")
+        print("[!] Example: export SECURIFT_DEMO_PASSWORD=\"change-this-for-local-demo\"")
+        sys.exit(1)
+
     app = create_app()
     with app.app_context():
         print("[*] Initializing SQLite database schema...")
@@ -88,9 +110,9 @@ def seed_database():
         pcap_dir = app.config["PCAP_FOLDER"]
 
         # 1. Create Default Admin User
-        print("[*] Seeding default operator credential (admin / admin123)...")
+        print("[*] Seeding default operator credential (admin)...")
         admin = User(username="admin", role="Lead Security Architect")
-        admin.set_password("admin123")
+        admin.set_password(demo_password)
         db.session.add(admin)
         db.session.commit()
 
@@ -665,7 +687,7 @@ def seed_database():
 
         db.session.commit()
         print("[+] Demonstration environment seeded successfully!")
-        print("    Demo User: admin | Password: admin123")
+        print("    Demo User: admin | Password: [Configured via SECURIFT_DEMO_PASSWORD]")
 
 
 if __name__ == "__main__":

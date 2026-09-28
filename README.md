@@ -268,17 +268,25 @@ The following screenshots show the SecuRift interface running locally with the s
 cd SecuRift
 ```
 
-### Step 2: Configure Environment Secret Key
-Generate and export a secure random secret key:
+### Step 2: Configure Environment Variables
+Copy `.env.example` to `.env` (or export the environment variables):
+
+```bash
+cp .env.example .env
+```
+
+Generate and export a secure random secret key and set your local demo password:
 
 **Linux / Kali Linux / macOS:**
 ```bash
 export SECURIFT_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+export SECURIFT_DEMO_PASSWORD="your-secure-demo-password"
 ```
 
 **Windows PowerShell:**
 ```powershell
 $env:SECURIFT_SECRET_KEY = [System.BitConverter]::ToString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).Replace('-','').ToLower()
+$env:SECURIFT_DEMO_PASSWORD = "your-secure-demo-password"
 ```
 
 ### Step 3: Install Required Dependencies
@@ -287,13 +295,15 @@ pip install -r requirements.txt
 ```
 
 ### Step 4: Seed Database with Demonstration Records
+Configure `SECURIFT_DEMO_PASSWORD` in your local `.env` file before running the demo seed workflow. Never use demo credentials in production.
+
 ```bash
 python3 seed_demo.py
 ```
 
 *Default Credentials Created:*
 - **Demo username:** `admin`
-- **Demo credentials:** Use the credentials configured by `seed_demo.py` for local demonstration only. Never use demo credentials in production.
+- **Demo password:** Configured via `SECURIFT_DEMO_PASSWORD`
 - **Role:** `Administrator`
 
 > These credentials are for the local seeded demonstration database only. Do not reuse them in production.
